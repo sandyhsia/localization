@@ -3,6 +3,8 @@ import random
 import time
 import openravepy
 from random import randint
+import matplotlib.pyplot as plt
+
 if not __openravepy_build_doc__:
     from openravepy import *
     from numpy import *
@@ -114,6 +116,44 @@ def Move3(env, robot, true_location, heading, step = STEP):
     else:
         return target_location, False
 
+def Move_with_error(env, robot, true_location, heading, step = 1.0, error = 0.0):
+    true_location2 = np.array(true_location)
+    heading = np.array(heading) * step
+    target_location = true_location2
+    target_location[0] = true_location2[0] + heading[0]
+    target_location[1] = true_location2[1] + heading[1]
+
+    if (random.uniform(0, 1) < error):
+        neighbors = getNeighbors(true_location2, step)
+        neighbor = neighbors[np.random.randint(0, 8)]
+        while(neighbor[0] == target_location[0] and neighbor[1] == target_location[1]):
+            neighbor = neighbors[np.random.randint(0, 8)]
+        target_location = neighbor
+
+    if (is_collision(env, robot, target_location) or check_whether_out_of_bound(target_location)):
+        return true_location, True
+    else:
+        return target_location, False
+
+def Move_with_error2(env, robot, true_location, heading, step = 1.0, error = 0.0):
+    true_location2 = np.array(true_location)
+    heading = np.array(heading) * step
+    target_location = true_location2
+    target_location[0] = true_location2[0] + heading[0]
+    target_location[1] = true_location2[1] + heading[1]
+
+    if (random.uniform(0, 1) < error):
+        neighbors = getNeighbors(true_location2, 0.2)
+        neighbor = neighbors[np.random.randint(0, 8)]
+        while(neighbor[0] == target_location[0] and neighbor[1] == target_location[1]):
+            neighbor = neighbors[np.random.randint(0, 8)]
+        target_location = neighbor
+
+    if (is_collision(env, robot, target_location) or check_whether_out_of_bound(target_location)):
+        return true_location, True
+    else:
+        return target_location, False
+
 def Sense(true_location):
     problist = [true_location]
     prob = [0.005]
@@ -132,6 +172,14 @@ def Sense(true_location):
 heading = [[1, 0], [0, 1], [-1, 0], [0, -1], 
            [1, 1], [-1, 1], [1, -1], [-1, -1]]
 
+def Sense_with_noise(true_location, noise_x, noise_y):
+    sensed_position = []
+    sensed_position.append(np.random.normal(0, noise_x) + true_location[0])
+    sensed_position.append(np.random.normal(0, noise_y) + true_location[1])
+    sensed_position.append(true_location[2])
+
+    return sensed_position
+
 def Sense2(env, robot, true_location, M):
     distance = []
     if M > 1000:
@@ -139,12 +187,10 @@ def Sense2(env, robot, true_location, M):
     s = 0.5
     location = array(true_location)
 
-    
     global heading
     for h in heading:
         step = array([h[0] * s, h[1] * s, 0.0])
         start = 0.0
-        # nextlocation = location + start * step
         while(not is_collision(env, robot, location + start * step)):
             if (check_whether_out_of_bound(location + start * step)):
                 break
@@ -174,6 +220,9 @@ def PickRandomHeading():
     global heading
     return heading[np.random.randint(8)]
 
+def PickRandomStep():
+    return random.uniform(0.05, 0.5)
+
 
 def initial_sampling(env, robot, xlimits = [-10, 10], ylimits = [-10, 10], M = 100):
     points = []
@@ -183,7 +232,32 @@ def initial_sampling(env, robot, xlimits = [-10, 10], ylimits = [-10, 10], M = 1
         config = [x, y, 0.05]
         if (not is_collision(env, robot, config)):
             points.append(config)
-        
+
+    while len(points) == 0:
+        x = random.uniform(xlimits[0], xlimits[1])
+        y = random.uniform(ylimits[0], ylimits[1])
+        config = [x, y, 0.05]
+        if (not is_collision(env, robot, config)):
+            points.append(config)
+
+    return points
+
+def initial_sampling2(env, robot, location, noise = 1.0, xlimits = [-10, 10], ylimits = [-10, 10], M = 100):
+    points = []
+    for i in range(M):
+        x = random.normal(0, noise) + location[0]
+        y = random.normal(0, noise) + location[1]
+        config = [x, y, 0.05]
+        if (not is_collision(env, robot, config)):
+            points.append(config)
+
+    while len(points) == 0:
+        x = random.normal(0, noise) + location[0]
+        y = random.normal(0, noise) + location[1]
+        config = [x, y, 0.05]
+        if (not is_collision(env, robot, config)):
+            points.append(config)
+
     return points
 
 def get_possibility(env, robot, location, heading, is_wall):
@@ -210,7 +284,6 @@ def generate_possibility(env, robot, heading, is_wall, X):
     for i in range(len(X)):
         p = get_possibility(env, robot, X[i], heading, is_wall)
         weight[i] = p
-        # print p
     return weight
 
 def check_whether_adjacent(point, secondpoint, step = STEP):
@@ -237,32 +310,27 @@ def calculate_posibility(position, sensed_position, true_distances, xm_distances
         true_distances = array(true_distances)
         xm_distances = array(xm_distances)
         diff = abs(1.0 / (sum(abs(true_distances - xm_distances) ** 2) + 0.00001))
-        # print diff
         return diff
 
     if is_wall == 1:
         if xm_is_wall == 1:
-            
-            # if (configDistance1(position, sensed_position) < 0.1):
-            #     return 1.2
             return 1.0 * diff
         else:
             return 0.005 * diff
     else:
         if xm_is_wall == 0:
             return 1.0 * diff
-            # if (configDistance1(position, sensed_position) < 0.1):
-            #     return 1.1
         else:
             return 0.005 * diff
+
+def calculate_posibility2(position, sensed_position, step = STEP):
+    return 1.0 / (sqrt(sum((array(position) - array(sensed_position)) ** 2)) + 0.2)
 
 
 NOISE = 0.4
 def find_noise_helper(env, robot, point, noise, point_index = [1, 0]):
     i = 0.0
     step = 0.05
-    # if (noise < i):
-    #     step *= -1
     while (abs(i - noise) > 0.05):
         i += step
         if (is_collision(env, robot, [point[0] + i * point_index[0], point[1] + i * point_index[1], 0.05])):
@@ -276,21 +344,12 @@ def find_noise(env, robot, point, noise = [-1 * NOISE, NOISE, -1 * NOISE, NOISE]
     noise[3] = find_noise_helper(env, robot, point, noise[3], point_index = [0, 1])
     return noise
 
-
-
-
 def add_noise(point, noise = [-1 * NOISE, NOISE, -1 * NOISE, NOISE]):
     newpoint = point
     n = random.uniform(noise[0], noise[1])
     newpoint[0] += n
     n = random.uniform(noise[2], noise[3])
     newpoint[1] += n
-    # while(check_whether_out_of_bound(newpoint)):
-    #     n = random.uniform(-1 * noise, noise)
-    #     newpoint[0] = point[0] + n
-    #     n = random.uniform(-1 * noise, noise)
-    #     newpoint[1] = point[1] + n
-
     return newpoint
 
 def configDistance1(A, B):
@@ -300,52 +359,38 @@ def configDistance1(A, B):
     return sqrt(sum)
 
 def Resampling(env, robot, Xt, Weight):
-    # print Weight
-    # Xt = array(Xt)
     point = np.random.choice(len(Xt), len(Xt), p = Weight)
-    # print point
     newXt = {}
     poorpoint = {}
     cloud = {}
     temp = Xt[point[0]]
     cloud[tuple(Xt[point[0]])] = [1, [temp[0], temp[1], temp[2]]]
-    # print "Xt = ", Xt
     for i in range(len(Xt)):
         poor = True
         for j in cloud:
-            # print j, "  ", cloud[j][1][0], " ", cloud[j][1][1]
             if configDistance1(tuple(Xt[point[i]]), j) < 1.1:
-                # print j, "  ", cloud[j][1][0], " ", cloud[j][1][1]
                 cloud[j][0] += 1
                 cloud[j][1][0] += Xt[point[i]][0]
                 cloud[j][1][1] += Xt[point[i]][1]
-                # print j, "  ", cloud[j][1][0], " ", cloud[j][1][1]
                 poor = False
                 break
 
         if poor:
-            # print "poor: ", Xt[point[i]], " i = ", i, "  ", point[i]
             temp = Xt[point[i]]
             cloud[tuple(Xt[point[i]])] = [1, [temp[0], temp[1], temp[2]]]
 
         newXt[tuple(Xt[point[i]])] = Weight[point[i]]
 
     for config in cloud:
-        # print cloud[config][1][0], "   ", cloud[config][0]
         cloud[config][1][0] /= float(cloud[config][0])
         cloud[config][1][1] /= float(cloud[config][0])
 
     result = []
     for index in newXt:
         if index in cloud and cloud[index][0] < 15:
-            # noise = find_noise(env, robot, index)
-            # print "noise = ", noise
             num = int(newXt[index] * 2 * len(Xt) * log(2000.0 / sqrt(len(Xt))))
-            # if (num < 5):
-            #     num = 5
             if (num > 20):
                 num = 20
-            # print num
             for j in range(num):
                 add_point = add_noise(array(index))
                 if (not check_whether_out_of_bound(add_point)):
@@ -359,6 +404,12 @@ def Resampling(env, robot, Xt, Weight):
                 result.append(array(index))
     return result
 
+def Resampling2(env, robot, Xt, Weight):
+    point = np.random.choice(len(Xt), len(Xt), p = Weight)
+    newXt = []
+    for i in range(len(Xt)):
+        newXt.append(Xt[point[i]])
+    return newXt
 
 def check_final_points_cloud(Xt):
     meanx = mean(array(Xt)[:, 0])
@@ -374,8 +425,7 @@ def check_final_points_cloud(Xt):
 
 
 
-def Astar(env, robot, startconfig, goalconfig):
-    step = 0.25
+def Astar(env, robot, startconfig, goalconfig, step = 0.25):
     d = mat([[step, 0, 0],
              [0, step, 0],
              [0, 0, 1]])
@@ -443,10 +493,6 @@ def Astar(env, robot, startconfig, goalconfig):
 
             plot = array(nextconfig)
             plot[2] = 0.05
-            # if tuple(plot) not in visitpoints:
-            #     points.append(env.plot3(points= plot,
-            #                     pointsize=3.0,
-            #                     colors=array((0,0,1))))
             visitpoints[tuple(plot)] = 1
 
             # heuristic
@@ -467,5 +513,38 @@ def Astar(env, robot, startconfig, goalconfig):
     return plot
 
 
+def demo_analysis(particle_time_list, KF_time_list, particle_err_list, KF_err_list, sense_err_list, particle_hit_count, KF_hit_count, count):
+    print ""
+    print "Analysis:"
+    
+    plt.figure()
+    plt.plot([i for i in range(len(particle_time_list))], particle_time_list, 'bo-')
+    plt.xlabel('Iteration')
+    plt.ylabel('Time')
+    plt.title('Computation Time vs Iteration (b: particle)')
+    plt.savefig('Computation Time vs Iteration (b: particle).png')
+    plt.show()
 
+    plt.figure()
+    plt.plot([i for i in range(len(KF_time_list))], KF_time_list, 'go-')
+    plt.xlabel('Iteration')
+    plt.ylabel('Time')
+    plt.title('Computation Time vs Iteration (g: kalman)')
+    plt.savefig('Computation Time vs Iteration (g: kalman).png')
+    plt.show()
+
+    plt.figure()
+    plt.plot([i for i in range(len(particle_err_list))], particle_err_list, 'bo-', label = 'particle')
+    KF_err_list = np.squeeze(np.asarray(KF_err_list))
+    plt.plot([i for i in range(len(KF_err_list))], KF_err_list, 'go-', label = 'kalman')
+    plt.plot([i for i in range(len(sense_err_list))], sense_err_list, 'k--', label = 'sensor')
+    plt.xlabel('Iteration')
+    plt.ylabel('Error')
+    plt.legend(loc='upper left')
+    plt.title('Estimation Error vs Iteration')
+    plt.savefig('Estimation Error vs Iteration.png')
+    plt.show()
+
+    print "Particle filter results invalid probablity:", particle_hit_count/count
+    print "Kalman filter results invalid probability:", KF_hit_count/count
 

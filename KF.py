@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.patches import Ellipse
 
 def kalman_xy(x, P, measurement, R,
               motion = np.matrix('0. 0. 0. 0.').T,
@@ -26,24 +27,7 @@ def kalman_xy(x, P, measurement, R,
                       0. 1. 0. 0.'''))
 
 def kalman(x0, P0, measurement, R, motion, Q, F, H):
-    '''
-    Parameters:
-    x: initial state
-    P: initial uncertainty convariance matrix
-    measurement: observed position (same shape as H*x)
-    R: measurement noise (same shape as H)
-    motion: external motion added to state vector x
-    Q: motion noise (same shape as P)
-    F: next state function: x_prime = F*x
-    H: measurement function: position = H*x
-
-    Return: the updated and predicted new values for (x, P)
-
-    See also http://en.wikipedia.org/wiki/Kalman_filter
-
-    This version of kalman can be applied to many different situations by
-    appropriately defining F and H 
-    '''
+    
     # PREDICT x, P based on motion
     x_pred = F*x0 + motion
     P_pred = F*P0*F.T + Q
@@ -58,7 +42,7 @@ def kalman(x0, P0, measurement, R, motion, Q, F, H):
     I = np.matrix(np.eye(F.shape[0])) # identity matrix
     P_hat = (I - K*H)*P_pred
 
-    #print x, '\n', P, 'y', y
+    #print x_hat, '\n', P_hat, 'y', y
 
     return x_hat, P_hat
 
@@ -74,68 +58,120 @@ def extend_kalman(x0, P0, measurement, R, motion, Q, F = np.eye(2)): # for dista
     d = np.sqrt(x_pred[0,0]**2+x_pred[1,0]**2)
     H = np.array([x_pred[0,0]/d, x_pred[1,0]/d])
     y = measurement - np.matmul(H, x_pred)
-    print "err", y
+    # print "err", y
     S = np.matmul(np.matmul(H, P_pred), np.transpose(H)) + R # residual convariance
     K = np.matmul(P_pred, np.transpose(H)).reshape(state_dim, 1) * np.linalg.inv(S)    # Kalman gain
     x_hat = x_pred + K*y.reshape(-1, 1)
     I = np.matrix(np.eye(F.shape[0])) # identity matrix
     P_hat = (I - K*H)*P_pred
 
-    print x_hat, '\n'
+    # print x_hat, '\n'
 
     return x_hat, P_hat
 
-def demo_kalman_xy():
-    x = np.matrix('0. 0. 0. 0.').T 
+def demo_kalman_xy(true_xy=np.array([[0,0]]), KF_init=np.array([[0,0]]), Q=np.zeros((4,4)), R=np.array([[10,0],[0,10]]), N=30, step_mode=0):
+    
+    print "Regular KF demo."
+
+    x = np.matrix('0. 0. 0. 0.').T  
     P = np.matrix(np.eye(4))*1000 # initial uncertainty
 
-    N = 40
-    true_x = [0]
-    true_y = [0]
-    observed_x = [0]
-    observed_y = [0]
-    kalman_x = [0]
-    kalman_y = [0]
-    R = np.array([[1,0],[0,1]])
-    Q = np.zeros((4, 4))
-    Q[2,2] = 0.09
-    Q[3,3] = 0.09
+    N = 30
+    true_x = [true_xy[0,0]]
+    true_y = [true_xy[0,1]]
+    observed_x = [true_xy[0,0]]
+    observed_y = [true_xy[0,0]]
+    kalman_x = [KF_init[0,0]]
+    kalman_y = [KF_init[0,1]]
+    #R = np.array([[1,0],[0,1]])
+    #Q = np.zeros((4, 4))
+    Q[2,2] = 0.1
+    Q[3,3] = 0.1
+    P_list = []
+    P_list.append(P)
 
-    '''
-    '''
+    if step_mode ==2:
+        x1 = np.matrix('0. 0. 0. 0.').T
+        x2 = np.matrix('-3. 1. 0. 0.').T 
+        kalman_x1 = [0]
+        kalman_y1 = [0]
+        kalman_x2 = [-15]
+        kalman_y2 = [1]
+        P1 = np.matrix(np.eye(4))*1000 # initial uncertainty
+        P2 = np.matrix(np.eye(4))*1000 # initial uncertainty
+
     for i in range(N):
-        motion = np.array([np.random.normal(2, 0.3), np.random.normal(1, 0.3)])
+        motion = np.array([np.random.normal(1, 0.2), np.random.normal(1, 0.5)])
         true_x.append(true_x[i]+motion[0])
         true_y.append(true_y[i]+motion[1])
         observed_x.append(true_x[i+1] + np.random.normal(0, 1))
         observed_y.append(true_y[i+1] + np.random.normal(0, 1))
         meas = [observed_x[i+1], observed_y[i+1]]
 
-        x, P = kalman_xy(x, P, meas, R, motion=np.matrix([0,0,0,0]).T, Q=np.zeros((4,4)))
+        x, P = kalman_xy(x, P, meas, R=np.array([[1,0],[0,1]]), motion=np.matrix([0,0,0,0]).T, Q=np.zeros((4,4)))
         kalman_x.append(x[0][0])
         kalman_y.append(x[1][0])
-    plt.plot(observed_x, observed_y, 'ro')
-    plt.plot(kalman_x, kalman_y, 'go-')
-    plt.plot(true_x, true_y, 'bo-')
+        if step_mode == 2:
+            x1, P1 = kalman_xy(x1, P1, meas, R=np.array([[1000,0],[0,1000]]), motion=np.matrix([0,0,0,0]).T, Q=np.zeros((4,4)))
+            x2, P2 = kalman_xy(x2, P2, meas, R=np.array([[0.0001,0],[0,0.0001]]), motion=np.matrix([0,0,0,0]).T, Q=np.zeros((4,4)))
+            kalman_x1.append(x1[0][0])
+            kalman_y1.append(x1[1][0])
+            kalman_x2.append(x2[0][0])
+            kalman_y2.append(x2[1][0])
+        P_list.append(P)
+
+
+    if step_mode == 1:
+        a = plt.subplot(111)
+        for i in range(len(observed_x)):
+            #print P_list[i][0,0]
+            e = Ellipse((kalman_x[i], kalman_y[i]), np.sqrt(P_list[i][0,0]), np.sqrt(P_list[i][1,1]), 0)
+            e.set_alpha(0.1)
+            a.add_artist(e)
+    plt.plot(observed_x, observed_y, 'ro', label='Observation')
+    plt.plot(kalman_x, kalman_y, 'go-', label='KF 1')
+    plt.plot(true_x, true_y, 'bo-', label='Truth')
+    plt.xlabel('Position x')
+    plt.ylabel('Position y')
+    plt.title('30 Steps with Noise. Motion: [1,1].(r:Observed, b:Truth, g:KF)')
+    if step_mode == 2:
+        plt.plot(kalman_x1, kalman_y1, 'mo-', label='KF 2')
+        plt.plot(kalman_x2, kalman_y2, 'co-', label='KF 3')
+        plt.title('30 Steps with Noise. Motion=[1,1].(r:Observed, b:Truth, others:KF)')
     plt.show()
 
-def demo_extend_kalman_xy():
-    x = np.array([[1., 1.]]).T 
-    P = np.matrix(np.eye(2))*1000 # initial uncertainty
+def demo_extend_kalman_xy(true_xy=np.array([[1,1]]), KF_init=np.array([[1,1]]), Q=np.eye(2)*0.5, R=np.array([[1]]), N=30, step_mode=0):
 
-    N = 44
-    true_x = [1]
-    true_y = [1]
-    observed_x = [1]
-    observed_y = [1]
-    kalman_x = [1]
-    kalman_y = [1]
-    R = np.array([[0.01]])
-    Q = np.zeros((2, 2))*0.01
-    print Q
+    print "Extended KF demo."
+
+    x = np.array([[1., 1.]]).T 
+    P = np.matrix(np.eye(2))*100 # initial uncertainty
+
+    true_x = [true_xy[0,0]]
+    true_y = [true_xy[0,1]]
+    observed_x = [true_xy[0,0]]
+    observed_y = [true_xy[0,0]]
+    kalman_x = [KF_init[0,0]]
+    kalman_y = [KF_init[0,1]]
+    #R = np.array([[1]])
+    #Q = np.eye(2)
+    #Q[0,0] = 0.5
+    #Q[1,1] = 0.5
+    P_list = []
+    P_list.append(P)
+    if step_mode ==2:
+        x1 = np.array([[1., 1.]]).T 
+        x2 = np.array([[-15., 1.]]).T 
+        kalman_x1 = [0]
+        kalman_y1 = [0]
+        kalman_x2 = [-15]
+        kalman_y2 = [1]
+        P1 = np.matrix(np.eye(2))*100 # initial uncertainty
+        P2 = np.matrix(np.eye(2))*100 # initial uncertainty
+    # print Q
 
     for i in range(N):
-        motion = np.array([np.random.normal(1, 0.1), np.random.normal(0.5, 0.1)])
+        motion = np.array([np.random.normal(1, 0.5), np.random.normal(1, 0.5)])
         true_x.append(true_x[i]+motion[0])
         true_y.append(true_y[i]+motion[1])
         observed_x.append(true_x[i+1] + np.random.normal(0, 0.1))
@@ -145,10 +181,34 @@ def demo_extend_kalman_xy():
         x, P = extend_kalman(x, P, meas, R, motion=np.array([[motion[0],motion[1]]]).T, Q=Q)
         kalman_x.append(x[0][0])
         kalman_y.append(x[1][0])
-        print "true", true_x[i+1], true_y[i+1]
-    plt.plot(observed_x, observed_y, 'ro')
-    plt.plot(kalman_x, kalman_y, 'go-')
-    plt.plot(true_x, true_y, 'bo-')
+        P_list.append(P)
+        if step_mode == 2:
+            x1, P1 = extend_kalman(x1, P1, meas, R=np.array([[0.01]]), motion=np.array([[motion[0],motion[1]]]).T, Q=Q)
+            x2, P2 = extend_kalman(x2, P2, meas, R=np.array([[100]]), motion=np.array([[motion[0],motion[1]]]).T, Q=Q)
+            kalman_x1.append(x1[0][0])
+            kalman_y1.append(x1[1][0])
+            kalman_x2.append(x2[0][0])
+            kalman_y2.append(x2[1][0])
+        # print "true", true_x[i+1], true_y[i+1]
+    
+    if step_mode == 1:
+        a = plt.subplot(111)
+        for i in range(len(observed_x)):
+            #print P_list[i][0,0]
+            e = Ellipse((kalman_x[i], kalman_y[i]), np.sqrt(P_list[i][0,0]), np.sqrt(P_list[i][1,1]), 0)
+            e.set_alpha(0.1)
+            a.add_artist(e)
+    plt.plot(observed_x, observed_y, 'ro', label='Observation')
+    plt.plot(kalman_x, kalman_y, 'go-', label='KF 1')
+    plt.plot(true_x, true_y, 'bo-', label='Truth')
+    plt.xlabel('Position x')
+    plt.ylabel('Position y')
+    plt.title('30 Steps with Noise. Motion: [1,1],(r:Observed, b:Truth, g:KF)')
+    if step_mode == 2:
+        plt.plot(kalman_x1, kalman_y1, 'mo-', label='KF 2')
+        plt.plot(kalman_x2, kalman_y2, 'co-', label='KF 3')
+        plt.title('30 Steps with Noise. Motion=[1,1],(r:Observed, b:Truth, others:KF)')
     plt.show()
-#demo_kalman_xy()
-demo_extend_kalman_xy()
+
+#demo_kalman_xy(step_mode=2)
+#demo_extend_kalman_xy(step_mode=2)
